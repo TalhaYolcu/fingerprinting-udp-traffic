@@ -3,6 +3,8 @@ name: C++ CI (Sniffer Build)
 on:
   push:
     branches: [ "main" ]
+    branches: [ "adding-sniffer" ]
+
   pull_request:
     branches: [ "main" ]
 
