@@ -39,3 +39,37 @@
 
 # debug information files
 *.dwo
+
+
+# C++ ve Qt Derleme Çıktıları
+build/
+bin/
+*.o
+*.obj
+*.exe
+Makefile
+*.pro.user
+moc_*.cpp
+ui_*.h
+qrc_*.cpp
+
+# Python ve Sanal Ortam
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+env/
+.env
+
+# Veri Setleri ve Modeller (GitHub'a atılmaz, çok yer kaplar)
+data/raw/*
+data/processed/*
+data/models/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+!data/models/.gitkeep
+
+# IDE Klasörleri
+.vscode/
+.idea/
+*.swp
