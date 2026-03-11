@@ -1,4 +1,5 @@
 #include <iostream>
+#include <fstream>      // Dosya islemleri icin
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -6,10 +7,28 @@
 #include <netinet/ip.h>
 #include <netinet/udp.h>
 #include <unistd.h>
-#include <cstring>
-#include <chrono> // Zaman olcumu icin
+#include <chrono>
+#include <map>
+#include <tuple>
+#include <string>
 
 using namespace std::chrono;
+
+typedef std::tuple<uint32_t, uint32_t, uint16_t, uint16_t> FlowKey;
+
+struct FlowData {
+    time_point<high_resolution_clock> last_packet_time;
+    int packet_count;
+};
+
+// FlowKey'i okunabilir bir string'e ceviren yardimci fonksiyon (CSV icin)
+std::string get_flow_id(uint32_t saddr, uint32_t daddr, uint16_t sport, uint16_t dport) {
+    struct in_addr sip, dip;
+    sip.s_addr = saddr;
+    dip.s_addr = daddr;
+    return std::string(inet_ntoa(sip)) + ":" + std::to_string(sport) + "-" +
+           std::string(inet_ntoa(dip)) + ":" + std::to_string(dport);
+}
 
 int main() {
     int raw_socket = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL));
@@ -18,20 +37,26 @@ int main() {
         return 1;
     }
 
-    std::cout << "Sniffer basladi. UDP Paketleri ve IAT (Zaman Farki) analiz ediliyor..." << std::endl;
+    // CSV Dosyasini olustur ve basliklari (Header) yaz
+    // Not: Calistirdiginiz dizinde 'data/raw' klasorlerinin var oldugundan emin olun.
+    std::ofstream csv_file("data/raw/udp_flows.csv");
+    if (!csv_file.is_open()) {
+        std::cerr << "CSV dosyasi acilamadi! data/raw/ klasoru var mi?" << std::endl;
+        return 1;
+    }
+    
+    // ML Modeli icin gereken kolonlar
+    csv_file << "Flow_ID,Packet_Count,Size_Bytes,IAT_Microseconds\n";
+    
+    std::cout << "Sniffer basladi. Veriler 'data/raw/udp_flows.csv' dosyasina yaziliyor..." << std::endl;
     unsigned char buffer[65536]; 
-
-    // Bir onceki paketin gelis zamanini tutacak degisken
-    time_point<high_resolution_clock> last_packet_time = high_resolution_clock::now();
-    bool is_first_packet = true;
+    std::map<FlowKey, FlowData> flow_table;
 
     while (true) {
         int data_size = recvfrom(raw_socket, buffer, 65536, 0, NULL, NULL);
         if (data_size < 0) continue;
 
-        // Paketin geldigi ani yakala
-        auto current_packet_time = high_resolution_clock::now();
-
+        auto current_time = high_resolution_clock::now();
         struct ethhdr *eth = (struct ethhdr *)buffer;
         
         if (ntohs(eth->h_proto) == ETH_P_IP) {
@@ -41,28 +66,40 @@ int main() {
                 int ip_header_len = iph->ihl * 4;
                 struct udphdr *udph = (struct udphdr *)(buffer + sizeof(struct ethhdr) + ip_header_len);
 
+                uint16_t source_port = ntohs(udph->source);
+                uint16_t dest_port = ntohs(udph->dest);
                 uint16_t udp_length = ntohs(udph->len);
 
-                // IAT Hesaplama (Mikrosaniye cinsinden)
-                long long iat_microseconds = 0;
-                if (!is_first_packet) {
-                    auto duration = duration_cast<microseconds>(current_packet_time - last_packet_time);
-                    iat_microseconds = duration.count();
+                FlowKey key = std::make_tuple(iph->saddr, iph->daddr, source_port, dest_port);
+                std::string flow_id = get_flow_id(iph->saddr, iph->daddr, source_port, dest_port);
+
+                long long iat = 0;
+
+                if (flow_table.find(key) == flow_table.end()) {
+                    flow_table[key] = {current_time, 1};
                 } else {
-                    is_first_packet = false;
+                    auto duration = duration_cast<microseconds>(current_time - flow_table[key].last_packet_time);
+                    iat = duration.count();
+                    
+                    flow_table[key].last_packet_time = current_time;
+                    flow_table[key].packet_count++;
                 }
 
-                // Ekrana IAT ve Boyut bilgisini yazdir
-                std::cout << "Boyut: " << udp_length << " byte | " 
-                          << "IAT: " << iat_microseconds << " mikrosaniye" 
-                          << std::endl;
+                // Ekrana yazdir (opsiyonel, isterseniz yorum satirina alabilirsiniz)
+                std::cout << "Flow: " << flow_id << " | Size: " << udp_length << " | IAT: " << iat << "\n";
 
-                // Mevcut zamanı "son paket zamanı" olarak guncelle
-                last_packet_time = current_packet_time;
+                // Dosyaya yazdir
+                csv_file << flow_id << "," 
+                         << flow_table[key].packet_count << "," 
+                         << udp_length << "," 
+                         << iat << "\n";
+                         
+                csv_file.flush(); // Verinin aninda diske yazilmasini saglar
             }
         }
     }
 
     close(raw_socket);
+    csv_file.close();
     return 0;
 }
