@@ -20,4 +20,4 @@ jobs:
     - name: Sniffer'i Derle
       # Eger dosyanizi src/sniffer/ icine koyduysaniz yolu ona gore guncelleyin.
       # Kok dizindeyse dogrudan g++ sniffer.cpp -o sniffer yazin.
-      run: g++ sniffer.cpp -o sniffer
+      run: g++ src/sniffer/sniffer.cpp -o src/sniffer/sniffer
