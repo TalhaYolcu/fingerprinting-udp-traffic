@@ -63,7 +63,7 @@ void MainWindow::sendToPythonAI(QString flowId, const QVector<double> &sizes, co
         double score = resDoc.object().value("score").toDouble();
 
         // 1. Durumu ve Rengi Belirle
-        bool isMalicious = (score > 0.8);
+        bool isMalicious = (score > 0.5);
         QString statusText = isMalicious ? "ZARARLI TÜNEL" : "GÜVENLİ";
         QColor bgColor = isMalicious ? QColor(255, 200, 200) : QColor(200, 255, 200); // Kırmızı veya Yeşil
         QColor textColor = isMalicious ? Qt::darkRed : Qt::darkGreen;
